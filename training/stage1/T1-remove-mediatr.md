@@ -27,15 +27,24 @@ plain C# and Microsoft.Extensions.DependencyInjection. Behaviour must not change
 
 What the change is:
 
-(to be written)
+Today an endpoint sends a command through IMediator, and MediatR finds the matching handler at runtime. Afterwards the endpoint receives its handler directly, so a missing handler is caught when the application starts or builds. The existing behaviour (and functionality) of the application should remain the same. 
 
 Out of scope:
 
-(to be written)
+1. Do not change the business logic inside the handler. Only change how the handler is called. 
+
+2. Do not change the integration events that travel between services over RabbitMQ, or the event bus that carries them. These are not part of MediatR.
+
+3. However, the five handlers in src/Ordering.API/Application/IntegrationEvents/EventHandling/ are in scope. Each one receives a RabbitMQ event and then sends a command through IMediator. Only the way they send that command changes. The event they receive stays the same.
+
+4. Do not commit files that the build regenerates, such as the gRPC and OpenAPI files. 
+
+5. Do not change any service other than Ordering. The change is limited to Ordering.API, Ordering.Domain, Ordering.Infrastructure and Ordering.UnitTests, plus removing MediatR from Directory.Packages.props. 
 
 Is a text search for "MediatR" enough to find everything? Why or why not:
 
-(to be written)
+A text search for "MediatR" is not enough, because the files use MediatR types through the global usings without the word MediatR appearing in them. Removing the MediatR global using and building will make the compiler list every place that uses a MediatR type. 
+Also runtime behaviour is to be checked when MediatR package is no longer used. Some of the functions are dynamically invoked at runtime. Have to look into src/Ordering.API/Extensions/Extensions.cs for any runtime initializations/injections settings that need to be handled by alternate path. 
 
 ## Steps 2 and 3: impact matrix
 
