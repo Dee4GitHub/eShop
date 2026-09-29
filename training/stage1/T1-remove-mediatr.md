@@ -72,10 +72,46 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 ### Persistence and existing data
 
 - Agent said:
+    - `src/Ordering.Infrastructure/OrderingContext.cs:18,27-30` - the DbContext takes `IMediator` in
+      its second constructor. The DI container picks the constructor with the most parameters it can
+      resolve, so if the replacement dispatcher is not registered, DI silently falls back to the
+      one-parameter constructor at line 21. `_mediator` is then null, and line 55 throws a
+      NullReferenceException on the first save. The compiler cannot catch this failure.
+    - `src/Ordering.Infrastructure/OrderingContext.cs:55` - `SaveEntitiesAsync` dispatches domain events
+      BEFORE `base.SaveChangesAsync` (line 59). That position, inside the same transaction, is the
+      "same point in the unit of work" that acceptance criterion 6 protects.
+    - `src/Ordering.Infrastructure/MediatorExtension.cs:5,19` - `DispatchDomainEventsAsync` calls
+      `mediator.Publish(domainEvent)`. The event's static type is `INotification`, so MediatR finds the
+      handler from the runtime type. The replacement needs a runtime type to handler lookup built once at
+      startup, which is where acceptance criterion 7 asks for `FrozenDictionary`.
+    - `src/Ordering.Infrastructure/GlobalUsings.cs:2` - the MediatR global using for Infrastructure.
+    - `src/Ordering.Infrastructure/EntityConfigurations/OrderEntityTypeConfiguration.cs:9`,
+      `BuyerEntityTypeConfiguration.cs:10`, `PaymentMethodEntityTypeConfiguration.cs:10`,
+      `OrderItemEntityTypeConfiguration.cs:10` - each one calls `Ignore(b => b.DomainEvents)`. These
+      lines keep compiling if the element type changes, but the EF model must stay unchanged.
+    - `src/Ordering.Infrastructure/Migrations/OrderingContextModelSnapshot.cs` - no schema change is
+      expected. A `dotnet ef migrations add` should produce an empty `Up()`, and that result proves the
+      EF model did not move.
+    - `src/Ordering.Infrastructure/Idempotency/RequestManager.cs:21-37` and the `requests` table
+      (`ClientRequestEntityTypeConfiguration.cs:8`) - existing rows stay valid. `Name` stores
+      `typeof(T).Name` (line 30), so renaming a command class would change what new rows record.  
 - Verified:
+    - Build check. I commented out `global using MediatR;` in `src/Ordering.Infrastructure/GlobalUsings.cs` and rebuilt. The Infrastructure errors were:
+      - `MediatorExtension.cs` line 5: `IMediator` not found.
+      - `OrderingContext.cs` line 18: `IMediator` not found (the `_mediator` field).
+      - `OrderingContext.cs` line 27: `IMediator` not found (the second constructor's parameter).
+      - These match the agent's line numbers. The build does not report line 19 of `MediatorExtension.cs` separately, because the error on line 5 already covers the type.
+    - Runtime check, by reading `OrderingContext.cs`:
+      - Line 21 is a constructor that takes only `DbContextOptions<OrderingContext>`.
+      - Lines 27-29 are a second constructor that also takes `IMediator` and stores it in `_mediator`.
+      - Line 55 calls `_mediator.DispatchDomainEventsAsync(this)` with no null check, before `base.SaveChangesAsync`.
+      - The agent's warning is correct. If the replacement dispatcher is not registered, dependency injection can use the one-parameter constructor, `_mediator` stays null, and the first save fails at line 55. The build cannot catch this.
+    - Not checked yet: the four `Ignore(b => b.DomainEvents)` lines in `EntityConfigurations`, the migration snapshot, and `RequestManager.cs`. None of them is a build error, so each needs reading or the empty-migration check.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
+    - `Ordering.FunctionalTests`: placing an order runs the first save, so it fails if the dispatcher is missing.
+    - `dotnet ef migrations add` producing an empty `Up()` proves the EF model did not change.
 
 ### Application: commands, queries, handlers
 
