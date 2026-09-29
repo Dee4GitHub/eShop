@@ -60,11 +60,14 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
   - GlobalUsings.cs:3 has global using MediatR;
   - Order.cs and Buyer.cs raise the events and stay unchanged
 - Verified:
-  - Errors at exactly those 7files and lines files and lines
-  - Errors at lines 19, 20, 22, 28
-  - Not a compile error; open the file and check
-  - I commented out this line to check for compiler errors
-  - No errors there
+  - Build check. I commented out `global using MediatR;` in `src/Ordering.Domain/GlobalUsings.cs`
+    line 3 and rebuilt. 11 errors:
+    - The 7 event classes, at exactly the files and lines the agent gave.
+    - `Entity.cs` lines 19, 20, 22 and 28.
+  - `Entity.cs` line 24 did not error, but it is `new List<INotification>()`. The field error on
+    line 19 hides it.
+  - `Ordering.Domain.csproj` line 8 is `<PackageReference Include="MediatR" />`. Checked by reading.
+  - `Order.cs` and `Buyer.cs`: no errors.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
@@ -106,7 +109,13 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
       - Lines 27-29 are a second constructor that also takes `IMediator` and stores it in `_mediator`.
       - Line 55 calls `_mediator.DispatchDomainEventsAsync(this)` with no null check, before `base.SaveChangesAsync`.
       - The agent's warning is correct. If the replacement dispatcher is not registered, dependency injection can use the one-parameter constructor, `_mediator` stays null, and the first save fails at line 55. The build cannot catch this.
-    - Not checked yet: the four `Ignore(b => b.DomainEvents)` lines in `EntityConfigurations`, the migration snapshot, and `RequestManager.cs`. None of them is a build error, so each needs reading or the empty-migration check.
+    - By reading:
+      - The 4 `Ignore(b => b.DomainEvents)` lines are at `OrderEntityTypeConfiguration.cs` line 9,
+        and `BuyerEntityTypeConfiguration.cs`, `PaymentMethodEntityTypeConfiguration.cs` and
+        `OrderItemEntityTypeConfiguration.cs` line 10. This matches the agent.
+      - `OrderingContextModelSnapshot.cs` has no `DomainEvents`, so the events are not in the
+        EF model.
+      - `RequestManager.cs` line 30 stores `typeof(T).Name`. It has no MediatR reference.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
