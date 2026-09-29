@@ -48,24 +48,122 @@ Also runtime behaviour is to be checked when MediatR package is no longer used. 
 
 ## Steps 2 and 3: impact matrix
 
-"Agent said" is filled from the agent's answer in step 2. "Verified" gives the file and line
-I checked.
+One section per category. "Agent said" comes from the agent's answer in step 2.
+"Verified" says what I found when I checked, with the file and line.
 
-| Category                                          | Agent said | Verified (file:line) | Agent missed | Wrong or out of scope | Test that proves it |
-|---------------------------------------------------|------------|----------------------|--------------|-----------------------|---------------------|
-| Domain model and domain events                    |            |                      |              |                       |                     |
-| Persistence and existing data                     |            |                      |              |                       |                     |
-| Application: commands, queries, handlers          |            |                      |              |                       |                     |
-| Validation                                        |            |                      |              |                       |                     |
-| Cross-cutting: logging, transactions, idempotency |            |                      |              |                       |                     |
-| API surface: endpoints, versioning, OpenAPI       |            |                      |              |                       |                     |
-| Integration events and message contracts          |            |                      |              |                       |                     |
-| Dependency injection and configuration            |            |                      |              |                       |                     |
-| Other services and clients                        |            |                      |              |                       |                     |
-| Security and authorisation                        |            |                      |              |                       |                     |
-| Observability                                     |            |                      |              |                       |                     |
-| Tests                                             |            |                      |              |                       |                     |
-| Docs                                              |            |                      |              |                       |                     |
+### Domain model and domain events
+
+- Agent said:
+  - 7 event classes implement INotification (the 7 files and lines it named)
+  - Entity.cs lines 19, 20, 22, 24, 28
+  - Ordering.Domain.csproj:8 has the only MediatR reference
+  - GlobalUsings.cs:3 has global using MediatR;
+  - Order.cs and Buyer.cs raise the events and stay unchanged
+- Verified:
+  - Errors at exactly those 7files and lines files and lines
+  - Errors at lines 19, 20, 22, 28
+  - Not a compile error; open the file and check
+  - I commented out this line to check for compiler errors
+  - No errors there
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Persistence and existing data
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Application: commands, queries, handlers
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Validation
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Cross-cutting: logging, transactions, idempotency
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### API surface: endpoints, versioning, OpenAPI
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Integration events and message contracts
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Dependency injection and configuration
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Other services and clients
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Security and authorisation
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Observability
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Tests
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
+
+### Docs
+
+- Agent said:
+- Verified:
+- Agent missed:
+- Wrong or out of scope:
+- Test that proves it:
 
 ## Step 4: instruction to the agent
 

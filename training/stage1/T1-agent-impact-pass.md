@@ -7,7 +7,7 @@ in the impact matrix in `T1-remove-mediatr.md`.
 
 | Item            | Value                                |
 |-----------------|--------------------------------------|
-| Date            | 2026-09-28, 8:45 am                  |
+| Date            | 2026-09-28                           |
 | Tool and model  | Claude Code, Opus 5.5                |
 | Permission mode | plan (read-only, no code changes)    |
 
