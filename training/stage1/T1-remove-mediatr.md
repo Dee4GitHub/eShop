@@ -500,7 +500,7 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
    - Do not change the integration events that travel between services over RabbitMQ, or the event bus that carries them. These are not part of MediatR.
    - However, the five handlers in src/Ordering.API/Application/IntegrationEvents/EventHandling/ are in scope. Each one receives a RabbitMQ event and then sends a command through IMediator. Only the way they send that command changes. The event they receive stays the same.
    - Do not commit files that the build regenerates, such as the gRPC and OpenAPI files.
-   - Do not change any service other than Ordering. The change is limited to Ordering.API, Ordering.Domain, Ordering.Infrastructure and Ordering.UnitTests, plus removing MediatR from Directory.Packages.props.
+   - Do not change any service other than Ordering. The change must be limited to the projects listed in Part 2.
    - Do not fix this. `OrdersApi.cs` line 144 passes `CardSecurityNumber` (CVV) into the command unmasked, and `CreateOrderCommand.cs` line 53 exposes it as a public property. If the log provider expands `{@Command}`, the CVV is logged. Existing behaviour, out of scope for T1.
 
 ### 4. Patterns it must follow
@@ -511,19 +511,20 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
   - `ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs` lines 47-48 call `SaveEntitiesAsync` inside a domain event handler. That save dispatches more domain events while the first dispatch is still running. The new dispatcher must allow this nested call, and must not skip the nested events or loop forever.
   - `OrderServices` is bound with `[AsParameters]`. Every handler added to `OrderServices` must be registered in DI in `Extensions.cs`. If one is missing, minimal APIs treat it as the request body and the app fails at startup.
   - `Extensions.cs` lines 39-41 register Logging, then Validator, then Transaction. Every command must pass through them in that same order, with Logging outermost and Transaction innermost.
+  - Keep the four behaviour log messages exactly as they are: "Handling command" (`LoggingBehavior.cs` line 9), "Validating command" (`ValidatorBehavior.cs` line 18), "Begin transaction" and "Commit transaction" (`TransactionBehavior.cs` lines 41 and 45). The Run 1 log-order test depends on them.
 
 ### 5. Tests that prove it
 
 The work is done in two runs.
 
-Run 1 - tests only. Add the new tests below. Do not change any code under `src/`. Every new test must pass against the current MediatR code. Stop after Run 1 so I can review and commit.
+Run 1 - tests only. Add the new tests below. Every new test must pass against the current MediatR code. The only change allowed under `src/` is the temporary mutation check: one edit per test to prove the test goes red, reverted straight after. `src/` must have no changes at the end. Stop after Run 1 so I can review and commit.
 
 Run 2 - the refactor. The new tests from Run 1 must pass without being changed.
 
 New tests to add in Run 1:
 
-- AC4 (validation still runs), functional test: post a create order with an expired card. It must be rejected and no order created.
-- AC4 (behaviour order), unit test: register three fake behaviors that record the order they run in. Assert Logging runs first, then Validator, then Transaction.
+- AC4 (validation still runs), functional test: post a create order with a 2-digit CVV. Only the validator checks CVV length, so this proves the validator ran. The endpoint returns 200 OK and no order is created.
+- AC4 (behaviour order), functional test: place one order and capture the logs. Assert the behaviour log messages appear in this order: Logging, Validator, Transaction on the outer command, then Logging and Validator on the inner command, then the commit. No second transaction is opened for the inner command.
 - AC5 (idempotency), functional test: post the same create order twice with the same `x-requestid`. Only one order is created.
 - AC6 (domain events), functional test: place an order, then check the buyer was created. This proves `ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler` ran, including its nested save.
 - AC8 (API unchanged), functional test: fetch the Ordering OpenAPI document and compare it with a copy saved in Run 1.
@@ -531,7 +532,7 @@ New tests to add in Run 1:
 Checks the agent runs after Run 2, and reports the result of each:
 
 - AC1 and AC2: `git grep -n MediatR -- ":!training"` returns nothing.
-- AC3: `dotnet test tests/Ordering.FunctionalTests` passes. These tests start the real app, so an unregistered handler, including one on `OrderServices`, fails here.
+- AC3: `dotnet test --project tests/Ordering.FunctionalTests` passes. These tests start the real app, so an unregistered handler, including one on `OrderServices`, fails here.
 - AC7: no test. I check it in the diff review.
 - AC8: `dotnet test --solution eShop.Web.slnf` passes. The count is 122 plus the new Run 1 tests, and no existing test was deleted or loosened.
 - AC8: `dotnet ef migrations add Check` gives an empty `Up()`. Delete that migration after.
