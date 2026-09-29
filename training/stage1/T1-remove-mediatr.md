@@ -544,4 +544,10 @@ Checks I do myself after Run 2 (they need RabbitMQ and the other services, which
 
 ## Steps 5 and 6: plan review and diff review notes
 
-(to be written)
+- Run 1 finding, out of scope for T1:
+  - A valid order returns 500 under the functional test fixture. The order is still saved.
+  - Cause: `IntegrationEventLogService.cs` line 13 loads event types from
+    `Assembly.GetEntryAssembly()`. Under the test runner that is the test project, so no event
+    types are found and the publish after commit fails.
+  - Decision: tests 2, 3 and 4 do not assert the HTTP status. They assert the database and log
+    outcomes only.
