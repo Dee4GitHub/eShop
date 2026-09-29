@@ -213,8 +213,7 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
-    - Send an invalid create order (for example an expired card) through the endpoint. It must
-      still be rejected after the change.
+    - Send an invalid create order (for example an expired card) through the endpoint. It must still be rejected after the change.
 
 ### Cross-cutting: logging, transactions, idempotency
 
@@ -238,9 +237,22 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
       `src/Ordering.Infrastructure/Idempotency/RequestManager.cs`. Only the three HTTP commands use it
       (cancel, ship, create). The integration event handlers send plain commands with no request id.
 - Verified:
+    - Build check (same Ordering.API build): `LoggingBehavior.cs` lines 2 and 7,
+      `TransactionBehavior.cs` lines 5 and 20, `ValidatorBehavior.cs` lines 3 and 14 errored.
+      This matches the agent's list.
+    - Runtime check, by reading:
+      - `Extensions.cs` lines 39-41 register Logging, then Validator, then Transaction.
+      - `TransactionBehavior.cs` lines 27-30 skip a new transaction when one is already active.
+      - `TransactionBehavior.cs` line 52 publishes integration events after the commit.
+      - `OrderingIntegrationEventService.cs` line 40 saves the event with `GetCurrentTransaction()`.
+      - `IdentifiedCommandHandler.cs` lines 41-48 check `ExistAsync`, then write the request row.
+    - Not checked yet: that `CreateOrderDraftCommand` writes nothing, and that only cancel, ship
+      and create use idempotency.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
+    - Send the same create order twice with the same request id. The second must return the duplicate result and create no second order.
+    - Ordering.FunctionalTests must pass, with integration events still published after commit.
 
 ### API surface: endpoints, versioning, OpenAPI
 
@@ -267,8 +279,7 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
-    - Ordering.FunctionalTests must pass. They start the app, so an unregistered handler on
-      `OrderServices` fails there.
+    - Ordering.FunctionalTests must pass. They start the app, so an unregistered handler on `OrderServices` fails there.
     - Run the AppHost and open the Ordering OpenAPI page. Routes and version are unchanged.
 
 ### Integration events and message contracts
@@ -298,8 +309,7 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
-    - Run the AppHost and place an order. It must reach Paid or Cancelled, which needs the
-      stock and payment events to flow through these 5 handlers.
+    - Run the AppHost and place an order. It must reach Paid or Cancelled, which needs the stock and payment events to flow through these 5 handlers.
 
 ### Dependency injection and configuration
 
@@ -374,7 +384,6 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
     - `OrdersApi.cs` line 144 passes `CardSecurityNumber` (CVV) into the command unmasked, and
       `CreateOrderCommand.cs` line 53 exposes it as a public property. If the log provider
       expands `{@Command}`, the CVV is logged. To check. Existing behaviour, out of scope for T1.
-- Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
     - Place an order, then search the Ordering logs in the Aspire dashboard for the CVV value.
@@ -406,8 +415,7 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 - Agent missed:
 - Wrong or out of scope:
 - Test that proves it:
-    - Place an order before and after the change. In the Aspire dashboard, filter the Ordering
-      logs on "Handling command" and compare the count.
+    - Place an order before and after the change. In the Aspire dashboard, filter the Ordering logs on "Handling command" and compare the count.
 
 ### Tests
 
@@ -474,7 +482,64 @@ One section per category. "Agent said" comes from the agent's answer in step 2.
 
 ## Step 4: instruction to the agent
 
-(to be written)
+### 1. What to change
+  - Remove the MediatR package and every use of it. Replace it with a small hand-written dispatcher that uses generic `ICommandHandler<TCommand, TResult>` interfaces registered in DI, with no reflection. The behaviour of Ordering.API and the projects it depends on must not change.
+
+### 2. Projects it may touch
+
+   - `src/Ordering.API`
+   - `src/Ordering.Domain`
+   - `src/Ordering.Infrastructure`
+   - `tests/Ordering.UnitTests`
+   - `Directory.Packages.props`: only to remove the MediatR lines 95-96.
+   - `tests/Ordering.FunctionalTests`: Run 1 may ADD new tests. No existing test may be changed or deleted in either run.
+
+### 3. What it must not touch
+
+   - Do not change the business logic inside the handler. Only change how the handler is called. 
+   - Do not change the integration events that travel between services over RabbitMQ, or the event bus that carries them. These are not part of MediatR.
+   - However, the five handlers in src/Ordering.API/Application/IntegrationEvents/EventHandling/ are in scope. Each one receives a RabbitMQ event and then sends a command through IMediator. Only the way they send that command changes. The event they receive stays the same.
+   - Do not commit files that the build regenerates, such as the gRPC and OpenAPI files.
+   - Do not change any service other than Ordering. The change is limited to Ordering.API, Ordering.Domain, Ordering.Infrastructure and Ordering.UnitTests, plus removing MediatR from Directory.Packages.props.
+   - Do not fix this. `OrdersApi.cs` line 144 passes `CardSecurityNumber` (CVV) into the command unmasked, and `CreateOrderCommand.cs` line 53 exposes it as a public property. If the log provider expands `{@Command}`, the CVV is logged. Existing behaviour, out of scope for T1.
+
+### 4. Patterns it must follow
+
+  - `IdentifiedCommandHandler.cs` line 87 sends the inner command back through the pipeline, so logging, validation and the transaction run a second time. `CreateOrderCommandValidator` only runs on this second pass. Keep the second pass: the inner command must still go through the full pipeline, not straight to its handler.
+  - `IdentifiedCommandHandler.cs` lines 99-102 are `catch { return default; }`. Keep this exactly. A failed inner command must still return `false` to the endpoint, not throw.
+  - `OrderingContext.cs` line 55 calls the dispatcher with no null check. Register the new dispatcher so the two-parameter constructor is always used, or make the save fail with a clear error if it is missing.
+  - `ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs` lines 47-48 call `SaveEntitiesAsync` inside a domain event handler. That save dispatches more domain events while the first dispatch is still running. The new dispatcher must allow this nested call, and must not skip the nested events or loop forever.
+  - `OrderServices` is bound with `[AsParameters]`. Every handler added to `OrderServices` must be registered in DI in `Extensions.cs`. If one is missing, minimal APIs treat it as the request body and the app fails at startup.
+  - `Extensions.cs` lines 39-41 register Logging, then Validator, then Transaction. Every command must pass through them in that same order, with Logging outermost and Transaction innermost.
+
+### 5. Tests that prove it
+
+The work is done in two runs.
+
+Run 1 - tests only. Add the new tests below. Do not change any code under `src/`. Every new test must pass against the current MediatR code. Stop after Run 1 so I can review and commit.
+
+Run 2 - the refactor. The new tests from Run 1 must pass without being changed.
+
+New tests to add in Run 1:
+
+- AC4 (validation still runs), functional test: post a create order with an expired card. It must be rejected and no order created.
+- AC4 (behaviour order), unit test: register three fake behaviors that record the order they run in. Assert Logging runs first, then Validator, then Transaction.
+- AC5 (idempotency), functional test: post the same create order twice with the same `x-requestid`. Only one order is created.
+- AC6 (domain events), functional test: place an order, then check the buyer was created. This proves `ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler` ran, including its nested save.
+- AC8 (API unchanged), functional test: fetch the Ordering OpenAPI document and compare it with a copy saved in Run 1.
+
+Checks the agent runs after Run 2, and reports the result of each:
+
+- AC1 and AC2: `git grep -n MediatR -- ":!training"` returns nothing.
+- AC3: `dotnet test tests/Ordering.FunctionalTests` passes. These tests start the real app, so an unregistered handler, including one on `OrderServices`, fails here.
+- AC7: no test. I check it in the diff review.
+- AC8: `dotnet test --solution eShop.Web.slnf` passes. The count is 122 plus the new Run 1 tests, and no existing test was deleted or loosened.
+- AC8: `dotnet ef migrations add Check` gives an empty `Up()`. Delete that migration after.
+
+Checks I do myself after Run 2 (they need RabbitMQ and the other services, which the test fixture does not start):
+
+- AC6: run the AppHost and place an order in the browser. It reaches Paid or Cancelled.
+
 
 ## Steps 5 and 6: plan review and diff review notes
 
